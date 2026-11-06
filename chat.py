@@ -40,7 +40,8 @@ def stream_chat(url, key, model, messages, max_tokens=4096):
         data=json.dumps({"model": model, "messages": messages, "stream": True,
                          "max_tokens": max_tokens,
                          "stream_options": {"include_usage": True}}).encode(),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}",
+                 "User-Agent": "colab-llm-chat/1.0"},  # Cloudflare 会拦截默认的 Python-urllib UA（error 1010）
     )
     t0, first, n, answer, in_think = time.time(), None, 0, [], False
     with urllib.request.urlopen(req, timeout=600) as resp:
