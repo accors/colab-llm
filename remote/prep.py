@@ -115,6 +115,13 @@ def sync_repo(api, repo, quant, want_mmproj, drive_root, stage_root, extra_files
 
 
 def main():
+    try:
+        prep()
+    finally:
+        flush_drive()
+
+
+def prep():
     repo = env("HF_REPO")
     quant = env("QUANT", "IQ3_S")
     drive_root = env("DRIVE_MODELS", "/content/drive/MyDrive/models")

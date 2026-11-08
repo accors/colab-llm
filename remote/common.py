@@ -183,6 +183,24 @@ def build_and_cache(drive_root, ref, archs):
     return out
 
 
+def flush_drive():
+    """Wait until everything written to /content/drive is uploaded, then unmount.
+
+    drivefs uploads in the background: a finished copyfile() only means the
+    data reached its local cache. Stopping the VM before this returns can
+    leave missing or truncated files on Drive.
+    """
+    if not os.path.ismount("/content/drive"):
+        return
+    try:
+        from google.colab import drive
+    except ImportError:
+        log("google.colab not available; cannot flush Drive")
+        return
+    _, secs = with_heartbeat("flushing Drive uploads", drive.flush_and_unmount, every=30)
+    log(f"Drive flushed and unmounted ({secs:.0f}s)")
+
+
 def finish(main):
     """Run main() and print the result marker bin/colab-llm looks for."""
     try:

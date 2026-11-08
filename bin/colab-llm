@@ -269,6 +269,9 @@ cmd_restart() {
   fi
   rm -f "$SUP_PID"
   rssh "$SSH_HOST" "umask 077; cat > $REMOTE_APP/api_key" <"$KEY_FILE"
+  if [[ "$SOURCE" == drive || "$DRIVE_MODELS" == /content/drive/* ]]; then
+    "$COLAB" drivemount -s "$SESSION" # no-op if still mounted; serve unmounts after a build
+  fi
   local logfile="$STATE_DIR/serve.log"
   : >"$logfile"
   cexec "$SESSION" serve.py 900 "$logfile" || die "serve failed (log: $logfile); the session is still up: colab-llm down"

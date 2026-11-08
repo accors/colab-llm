@@ -96,6 +96,13 @@ def get_server(drive_root, ref, archs, gpu_arch, drive_ok):
     if not cached:
         if drive_ok:
             cached = build_and_cache(drive_root, ref, archs)
+            # the session may be stopped any time after this; make sure the
+            # cached build actually reaches Drive (serve needs Drive no more)
+            local_copy = f"{APP}/bin/{os.path.basename(cached)}"
+            os.makedirs(os.path.dirname(local_copy), exist_ok=True)
+            shutil.copyfile(cached, local_copy)
+            flush_drive()
+            cached = local_copy
         else:
             sha = resolve_llama_sha(ref)
             cached = f"{APP}/bin/llama-server-{sha[:10]}"
