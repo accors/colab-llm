@@ -10,8 +10,8 @@ CLI from this machine. The server listens only on the VM's 127.0.0.1 and is
 forwarded here with `ssh -L`. Everything goes through one script:
 `bin/colab-llm` (also on PATH as `colab-llm`).
 
-**It costs money.** The A100 80GB burns about **7.52 compute units (CU) per
-hour**, idle or not. Colab Pro adds 100 CU/month (≈13 h of A100). Treat
+**It costs money.** The A100 80GB burns about **8.88 compute units (CU) per
+hour**, idle or not. Colab Pro adds 100 CU/month (≈11 h of A100). Treat
 starting it as a spending decision.
 
 ## Rules
@@ -20,7 +20,7 @@ starting it as a spending decision.
    task actually needs the model, or the user asked. If it is not already
    running and the job is small, ask the user first.
 2. **Check the balance first:** `colab-llm usage`. If fewer than ~10 CU are
-   left, ask before starting (one start ≈ 0.6–1 CU of setup, then 7.52 CU/h).
+   left, ask before starting (one start ≈ 0.6–1 CU of setup, then 8.88 CU/h).
 3. **Stop it when done:** `colab-llm down`. Do not rely on the idle timer
    (15 min) unless the user wants the endpoint to stay warm.
 4. **Never print, log, commit or send secrets:** `~/.config/colab-llm/api_key`
@@ -44,9 +44,9 @@ colab-llm ensure
 # COLAB_LLM_KEY_FILE=/home/<user>/.config/colab-llm/api_key
 ```
 
-A cold start takes roughly 6–10 minutes: create the A100 session, download
-83.6 GB from Hugging Face (~4.5 min at a measured ~311 MB/s), then load the
-model. `ensure` blocks until the endpoint is healthy; give it a timeout of at
+A cold start took 5 min 39 s when measured (2026-11): create the A100 session, download
+83.6 GB from Hugging Face (285 s), then load the model (23 s). Budget
+up to 10 min. `ensure` blocks until the endpoint is healthy; give it a timeout of at
 least 30 minutes.
 
 Call it (OpenAI-compatible):
@@ -84,7 +84,7 @@ Reload after editing `config.env` (model, context, extra llama-server flags):
 | VRAM | ~55 GB weights on GPU; the 28.8 GB n-gram table is memory-mapped from disk |
 | Endpoint | `http://127.0.0.1:${LOCAL_PORT:-8080}/v1`, model name `qwen3.8-flash-next` (`ALIAS`) |
 | Auto-stop | after `IDLE_MINUTES` (15) without tokens, or `MAX_HOURS` (8) |
-| Cost | A100 80GB ≈ 7.52 CU/h; T4 ≈ 1.19 CU/h |
+| Cost | A100 80GB ≈ 8.88 CU/h; T4 ≈ 1.19 CU/h |
 
 The model is not uncensored by default; switching `HF_REPO` to an abliterated
 build is a user decision, not an agent one.

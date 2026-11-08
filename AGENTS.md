@@ -8,7 +8,7 @@ Before using, starting or stopping it, read
 [`.claude/skills/colab-llm/SKILL.md`](.claude/skills/colab-llm/SKILL.md).
 The short version:
 
-- Starting it spends money (~7.52 compute units/hour). Do not start it
+- Starting it spends money (~8.88 compute units/hour). Do not start it
   without need; check `colab-llm usage` first; run `colab-llm down` when done.
 - Get an endpoint with `colab-llm ensure` (idempotent). Read the API key
   from `~/.config/colab-llm/api_key` at request time; never print or commit

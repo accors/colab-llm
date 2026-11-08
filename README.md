@@ -63,7 +63,7 @@ agent 里这样配：Base URL 填 `http://127.0.0.1:8080/v1`，API key 填 `~/.c
 
 ## 费用控制
 
-A100 80G 约 **7.52 CU/h**，Colab Pro 每月只有 100 CU，大约 13 小时。下面几层机制用来避免 GPU 空转：
+A100 80G 约 **8.88 CU/h**，Colab Pro 每月只有 100 CU，大约 11 小时。下面几层机制用来避免 GPU 空转：
 
 - **空闲自动关闭**：watchdog 每 30 秒读一次 llama-server 的 `/metrics`。连续 `IDLE_MINUTES`（默认 15 分钟）没有处理任何 token，supervisor 就会执行 `colab stop`。
 - **单次时长上限**：`MAX_HOURS`（默认 8 小时）。
