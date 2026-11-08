@@ -4,3 +4,4 @@ secrets.json
 __pycache__/
 .ipynb_checkpoints/
 .DS_Store
+.ruff_cache/

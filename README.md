@@ -55,6 +55,8 @@ colab-llm status      # 会话、空闲计时、token 数、CU 余额
 colab-llm down        # 用完立刻释放 GPU
 ```
 
+脚本或 agent 调用时，用 `colab-llm ensure`：已经在服务就什么都不做，否则执行 `up`，最后打印 URL、模型名和 key 文件路径（不会打印 key 本身）。仓库里自带给 agent 看的说明：`.claude/skills/colab-llm/SKILL.md`（Claude Code 会自动识别为项目 skill）和 `AGENTS.md`（Codex 等工具读取），里面写了费用规则和排错方法。
+
 agent 里这样配：Base URL 填 `http://127.0.0.1:8080/v1`，API key 填 `~/.config/colab-llm/api_key` 的内容，模型名填 `qwen3.8-flash-next`。这三项也都写在 `~/.config/colab-llm/client.env` 里。
 
 默认配置（`SOURCE=hf`、`BIN_STORE=hf`）不会用到 Drive。只有设置了 `SOURCE=drive` / `BIN_STORE=drive`，或者使用 `prep --models` / `--from-drive` 时才会挂载 Drive，CLI 会打印一个 Google 授权链接，在浏览器里点同意即可。

@@ -9,6 +9,7 @@
 #                                --models also copies the model to Drive
 #   colab-llm prep --from-drive  move an older Drive build into HF_BIN_REPO
 #   colab-llm up [--keep]        GPU session: load model, start server + tunnel
+#   colab-llm ensure             up only if not already serving; prints URL/model/key file
 #   colab-llm status             session, watchdog, local endpoint, CU balance
 #   colab-llm logs [server|watchdog|supervisor] [-f]
 #   colab-llm restart            reload llama-server (after editing config.env)
@@ -291,6 +292,20 @@ cmd_up() {
   "$COLAB" usage || true
 }
 
+# ensure: idempotent "make sure the endpoint is up" for scripts and agents.
+# Prints the connection settings (never the key itself) on success.
+cmd_ensure() {
+  load_config
+  if supervisor_running && local_healthy; then
+    note "already up"
+  else
+    cmd_up "$@"
+  fi
+  local_healthy || die "endpoint not healthy"
+  printf 'COLAB_LLM_URL=http://127.0.0.1:%s/v1\nCOLAB_LLM_MODEL=%s\nCOLAB_LLM_KEY_FILE=%s\n' \
+    "$LOCAL_PORT" "$ALIAS" "$KEY_FILE"
+}
+
 cmd_down() {
   load_config
   if supervisor_running; then
@@ -497,7 +512,7 @@ main() {
   local cmd="${1:-help}"
   shift || true
   case "$cmd" in
-    init | prep | up | down | restart | status | logs | ssh | _supervise) "cmd_$cmd" "$@" ;;
+    init | prep | up | ensure | down | restart | status | logs | ssh | _supervise) "cmd_$cmd" "$@" ;;
     chat) exec python3 "$REPO_DIR/chat.py" "$@" ;;
     usage) load_config; "$COLAB" usage ;;
     help | -h | --help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \{0,1\}//' ;;
