@@ -12,6 +12,12 @@ import threading
 import time
 
 APP = "/content/colab-llm"
+
+# hf_xet already downloads each file over many connections; high-performance
+# mode raises its concurrency and buffers (fine on Colab's 8+ vCPU / 50+ GB
+# VMs). Must be set before huggingface_hub is imported. XET_HIGH_PERF=0 to opt out.
+if os.environ.get("XET_HIGH_PERF", "1") == "1":
+    os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
 TAG = os.environ.get("COLAB_LLM_TAG", "colab-llm")
 
 

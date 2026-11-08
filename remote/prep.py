@@ -22,6 +22,33 @@ def select_files(api, repo, quant, want_mmproj):
     return info.sha, files
 
 
+class DriveCopy(threading.Thread):
+    """Copy one staged file to Drive in the background, then delete the staged copy."""
+
+    def __init__(self, src, target, size):
+        super().__init__(daemon=True)
+        self.src, self.target, self.size = src, target, size
+        self.tmp = target + ".partial"
+        self.error = None
+
+    def run(self):
+        try:
+            os.makedirs(os.path.dirname(self.target), exist_ok=True)
+            t0 = time.time()
+            shutil.copyfile(self.src, self.tmp)
+            os.replace(self.tmp, self.target)
+            secs = time.time() - t0
+            log(f"copied to Drive: {os.path.basename(self.target)} in {secs:.0f}s "
+                f"({self.size / max(secs, 1) / 1e6:.0f} MB/s)")
+            os.remove(self.src)
+        except BaseException as e:  # noqa: BLE001 - surfaced by check()
+            self.error = e
+
+    def check(self):
+        if self.error:
+            raise RuntimeError(f"copy to Drive failed for {self.target}: {self.error}")
+
+
 def sync_repo(api, repo, quant, want_mmproj, drive_root, stage_root, extra_files=()):
     from huggingface_hub import hf_hub_download
 
@@ -54,6 +81,9 @@ def sync_repo(api, repo, quant, want_mmproj, drive_root, stage_root, extra_files
         if free < need:
             raise RuntimeError(f"not enough Drive space: need {gb(need)}, free {gb(free)}")
 
+    # Pipeline: while file N is being copied to Drive, file N+1 downloads.
+    # At most two files sit on local disk at once (~84 GB for IQ3_S).
+    copier = None
     for name, size in todo:
         stage = os.path.join(stage_root, repo_dir_name(repo))
         os.makedirs(stage, exist_ok=True)
@@ -63,18 +93,14 @@ def sync_repo(api, repo, quant, want_mmproj, drive_root, stage_root, extra_files
             watch_path=stage,
         )
         log(f"downloaded {name}: {gb(size)} in {secs:.0f}s ({size / max(secs, 1) / 1e6:.0f} MB/s)")
-
-        target = os.path.join(dest, name)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        tmp = target + ".partial"
-        _, secs = with_heartbeat(
-            f"copy to Drive {name}",
-            lambda: shutil.copyfile(local_path, tmp),
-            watch_path=tmp,
-        )
-        os.replace(tmp, target)
-        log(f"copied to Drive: {name} in {secs:.0f}s ({size / max(secs, 1) / 1e6:.0f} MB/s)")
-        os.remove(local_path)
+        if copier:
+            copier.join()
+            copier.check()
+        copier = DriveCopy(local_path, os.path.join(dest, name), size)
+        copier.start()
+    if copier:
+        with_heartbeat("waiting for last Drive copy", copier.join, watch_path=copier.tmp)
+        copier.check()
 
     manifest_path = os.path.join(dest, "manifest.json")
     manifest = {}

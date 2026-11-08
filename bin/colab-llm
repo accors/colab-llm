@@ -40,7 +40,7 @@ load_config() {
   : "${LLAMA_CPP_REF:=master}" "${CUDA_ARCHS:=80}" "${MIN_VRAM_GIB:=75}"
   : "${REMOTE_PORT:=8000}" "${LOCAL_PORT:=8080}" "${CTX:=262144}" "${PARALLEL:=1}"
   : "${ALIAS:=qwen3.8-flash-next}" "${EXTRA_ARGS:=}" "${LOAD_TIMEOUT:=1800}"
-  : "${IDLE_MINUTES:=15}" "${MAX_HOURS:=8}" "${POLL:=30}" "${NOTIFY_CMD:=}"
+  : "${IDLE_MINUTES:=15}" "${MAX_HOURS:=8}" "${POLL:=30}" "${NOTIFY_CMD:=}" "${XET_HIGH_PERF:=1}"
   COLAB="$(command -v colab || true)"
   [[ -n "$COLAB" ]] || die "colab CLI not found (uv tool install google-colab-cli)"
   SSH_HOST="colab-llm-$SESSION"
@@ -52,7 +52,7 @@ load_config() {
 # prelude included) in ~/.config/colab-cli/history, so the key goes over ssh.
 REMOTE_VARS=(HF_REPO QUANT SOURCE DRIVE_MODELS MMPROJ MTP_REPO MTP_FILE BUILD FORCE_BUILD
   LLAMA_CPP_REF CUDA_ARCHS MIN_VRAM_GIB REMOTE_PORT CTX PARALLEL ALIAS EXTRA_ARGS
-  LOAD_TIMEOUT IDLE_MINUTES MAX_HOURS POLL)
+  LOAD_TIMEOUT IDLE_MINUTES MAX_HOURS POLL XET_HIGH_PERF)
 
 # session_alive NAME [ACCELERATOR]: the session exists (and has that accelerator).
 session_alive() {
