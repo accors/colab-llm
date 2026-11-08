@@ -4,7 +4,8 @@
 # through `ssh -L` (no public tunnel).
 #
 #   colab-llm init               one-time: config, API key, ssh config, checks
-#   colab-llm prep [--rebuild]   CPU session: model -> Drive, build llama-server
+#   colab-llm prep [--gpu T4] [--rebuild]
+#                                model -> Drive; with --gpu also build llama-server
 #   colab-llm up [--keep]        GPU session: load model, start server + tunnel
 #   colab-llm status             session, watchdog, local endpoint, CU balance
 #   colab-llm logs [server|watchdog|supervisor] [-f]
@@ -152,12 +153,23 @@ cmd_init() {
 
 cmd_prep() {
   load_config
-  local rebuild=0
-  [[ "${1:-}" == "--rebuild" ]] && rebuild=1
+  local rebuild=0 gpu=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --rebuild) rebuild=1; shift ;;
+      --gpu) gpu="${2:?--gpu needs a value, e.g. T4}"; shift 2 ;;
+      *) die "prep: unknown option $1 (--rebuild, --gpu T4)" ;;
+    esac
+  done
   local logfile="$STATE_DIR/prep.log"
   : >"$logfile"
   if session_alive "$PREP_SESSION"; then
     note "reusing session $PREP_SESSION"
+  elif [[ -n "$gpu" ]]; then
+    # GPU images ship nvcc; the CPU image does not. A T4 (~1.2 CU/h) can
+    # cross-compile for CUDA_ARCHS (sm80 for A100) far cheaper than the A100.
+    note "creating $gpu session $PREP_SESSION (high-mem) to build llama-server"
+    "$COLAB" new -s "$PREP_SESSION" --gpu "$gpu" --high-mem
   else
     note "creating CPU session $PREP_SESSION (high-mem)"
     "$COLAB" new -s "$PREP_SESSION" --high-mem
@@ -165,7 +177,9 @@ cmd_prep() {
   trap 'note "stopping $PREP_SESSION"; "$COLAB" stop -s "$PREP_SESSION" || true' EXIT
   note "mounting Drive (approve in the browser if asked)"
   "$COLAB" drivemount -s "$PREP_SESSION"
-  BUILD="${BUILD:-auto}" FORCE_BUILD="$rebuild" \
+  local build="${BUILD:-auto}"
+  [[ -n "$gpu" ]] && build=yes
+  BUILD="$build" FORCE_BUILD="$rebuild" \
     cexec "$PREP_SESSION" prep.py 900 "$logfile" || die "prep failed (log: $logfile)"
   note "prep done"
 }

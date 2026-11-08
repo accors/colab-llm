@@ -83,13 +83,14 @@ A100 80G 约 **7.52 CU/h**，Colab Pro 每月只有 100 CU，大约 13 小时。
 
 1. `--gpu A100 --high-mem` 分到的是不是 80G 卡。`up` 会打印显存大小，不够会直接停掉会话。
 2. Colab 那边的 sshd 是否允许 `ssh -L` 端口转发。如果不允许，`up` 最后会提示本地端口不通，需要查看 `colab-llm logs supervisor`。
-3. CPU 会话里有没有 `nvcc`。如果没有，`prep` 会跳过编译，第一次 `up` 时在 GPU 上编译（多花十几分钟的 GPU 时间），编译结果会缓存到 Drive。
-4. 从 Drive 拷到本地盘的速度。`up` 会打印 MB/s；如果明显比 HF 直接下载慢，就把 `SOURCE` 改成 `hf`。
+3. CPU 会话里没有 `nvcc`（已实测）。所以要编译就运行 `colab-llm prep --gpu T4`：T4 约 1.2 CU/h，交叉编译 sm80 大约 15 分钟，约 0.3 CU；如果拖到第一次 `up` 时在 A100 上编译，要 1.25–2.5 CU。
+4. 实测：HF 下载约 311 MB/s，写 Drive 约 121–148 MB/s。所以建议 `SOURCE=hf`，每次开机约 4.5 分钟、0.56 CU；从 Drive 读预计约 10 分钟、1.25 CU。
 
 ## 命令速查
 
 ```text
-colab-llm prep [--rebuild]        --rebuild 强制重新编译 llama-server（更新 llama.cpp）
+colab-llm prep --gpu T4           在 T4 上编译 llama-server（CPU 运行时没有 nvcc）
+colab-llm prep --gpu T4 --rebuild 强制重新编译（更新 llama.cpp）
 colab-llm up [--keep]             --keep 失败时不关闭会话，方便排查
 colab-llm logs server -f          远端 llama-server 日志
 colab-llm logs watchdog|supervisor|serve|prep
