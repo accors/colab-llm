@@ -52,7 +52,7 @@ def fetch_from_drive(drive_root, repo, local_root, names):
 
 
 def fetch_from_hf(repo, local_root, names):
-    subprocess.run(["pip", "install", "-q", "-U", "huggingface_hub[hf_xet]"], check=True, stdout=subprocess.DEVNULL)
+    ensure_hf_hub()
     from huggingface_hub import HfApi, hf_hub_download
 
     info = HfApi().model_info(repo, files_metadata=True)
@@ -86,30 +86,20 @@ def model_files(quant, want_mmproj):
     return pick
 
 
-def get_server(drive_root, ref, archs, gpu_arch, drive_ok):
+def get_server(ref, archs, gpu_arch):
     target = f"{APP}/bin/llama-server"
     arch_list = [a.strip() for a in archs.replace(";", ",").split(",") if a.strip()]
     if gpu_arch not in arch_list:
         log(f"GPU is sm{gpu_arch}, CUDA_ARCHS={archs}: building for sm{gpu_arch} instead")
         archs = gpu_arch
-    cached = find_cached_server(drive_root, ref, archs) if drive_ok else None
-    if not cached:
-        if drive_ok:
-            cached = build_and_cache(drive_root, ref, archs)
-            # the session may be stopped any time after this; make sure the
-            # cached build actually reaches Drive (serve needs Drive no more)
-            local_copy = f"{APP}/bin/{os.path.basename(cached)}"
-            os.makedirs(os.path.dirname(local_copy), exist_ok=True)
-            shutil.copyfile(cached, local_copy)
-            flush_drive()
-            cached = local_copy
-        else:
-            sha = resolve_llama_sha(ref)
-            cached = f"{APP}/bin/llama-server-{sha[:10]}"
-            if not os.path.exists(cached):
-                with_heartbeat("build", lambda: build_llama_server(sha, archs, cached), every=60)
+    store = bin_store()
+    cached = store.get(ref, archs)
+    if cached:
+        log(f"using llama-server from {store.label}: {os.path.basename(cached)}")
     else:
-        log(f"using cached llama-server: {os.path.basename(cached)}")
+        log(f"no llama-server build in {store.label}; building on this GPU "
+            "(cheaper next time: colab-llm prep --gpu T4)")
+        cached = build_and_store(store, ref, archs)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     shutil.copyfile(cached, target)
     os.chmod(target, 0o755)
@@ -209,7 +199,7 @@ def main():
     main_shard = next(p for n, p in sorted(files.items()) if n.startswith(f"{quant}/"))
     mmproj = next((p for n, p in files.items() if n.startswith("mmproj")), None)
 
-    server = get_server(drive_root, env("LLAMA_CPP_REF", "master"), env("CUDA_ARCHS", "80"), arch, drive_ok)
+    server = get_server(env("LLAMA_CPP_REF", "master"), env("CUDA_ARCHS", "80"), arch)
     stop_existing_server()
 
     cmd = [

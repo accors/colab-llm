@@ -16,7 +16,7 @@ fork 自 [crhywun/colab-llm](https://github.com/crhywun/colab-llm)。原版用 n
 | --- | --- | --- |
 | `bin/colab-llm` | 本机 | 唯一入口：`init / prep / up / status / logs / restart / down / chat / ssh / usage` |
 | `config.env.example` | 本机 | 配置模板，`init` 时复制成 `config.env` |
-| `remote/prep.py` | Colab T4 会话 | 编译 llama-server 缓存到 Drive；`SOURCE=drive` 或 `--models` 时也把模型存到 Drive |
+| `remote/prep.py` | Colab T4 会话 | 编译 llama-server 存到 HF 私有仓库（或 Drive）；`--models` 时也把模型存到 Drive |
 | `remote/serve.py` | Colab GPU 会话 | 检查显存，从 HF 下载模型（或从 Drive 拷贝），启动 llama-server |
 | `remote/watchdog.py` | Colab GPU 会话（kernel 内） | 维持会话存活；空闲、超时或服务挂掉时退出 |
 | `remote/common.py` | — | 公共函数，发送前拼接到上面三个脚本前面 |
@@ -34,12 +34,21 @@ ln -s "$PWD/bin/colab-llm" ~/.local/bin/colab-llm
 colab-llm init                        # 生成 config.env、API key、ssh 配置，并检查登录
 ```
 
+llama-server 的编译结果存在一个 **HF 私有模型仓库** 里（`BIN_STORE=hf`），这样整个流程都不用挂载 Google Drive，也就不会每台 VM 都要授权一次：
+
+1. 在 Hugging Face 上新建一个私有模型仓库，例如 `accors/colab-llm-bin`，在 `config.env` 里设置 `HF_BIN_REPO=accors/colab-llm-bin`。
+2. 新建一个 fine-grained token，只给这个仓库写权限，再加上公开仓库的读权限，然后保存到本机：
+   ```bash
+   (umask 077; read -rsp 'HF token: ' t; echo; printf '%s\n' "$t" > ~/.config/colab-llm/hf_token)
+   ```
+   token 通过 ssh 传到 VM，不经过 `colab exec`，所以不会出现在 CLI 的执行记录里。下载模型时也会用这个 token，按你自己账号的配额计算，不会因为和别人共用 Colab 的出口 IP 而被限流（429）。
+
 确保 Colab CLI 登录的 Google 账号就是有计算单元的那个账号。
 
 ## 使用
 
 ```bash
-colab-llm prep --gpu T4   # 只需一次：在 T4 上编译 llama-server 并缓存到 Drive（约 15 分钟，约 0.3 CU）
+colab-llm prep --gpu T4   # 只需一次：在 T4 上编译 llama-server 存到 HF_BIN_REPO（约 15 分钟，约 0.3 CU）
 colab-llm up          # 开 A100 80G，加载模型，启动后台 supervisor
 colab-llm chat "用三句话介绍你自己"
 colab-llm status      # 会话、空闲计时、token 数、CU 余额
@@ -48,7 +57,7 @@ colab-llm down        # 用完立刻释放 GPU
 
 agent 里这样配：Base URL 填 `http://127.0.0.1:8080/v1`，API key 填 `~/.config/colab-llm/api_key` 的内容，模型名填 `qwen3.8-flash-next`。这三项也都写在 `~/.config/colab-llm/client.env` 里。
 
-`prep` 和 `up` 挂载 Drive 时，CLI 可能会打印一个 Google 授权链接，在浏览器里点同意即可。
+默认配置（`SOURCE=hf`、`BIN_STORE=hf`）不会用到 Drive。只有设置了 `SOURCE=drive` / `BIN_STORE=drive`，或者使用 `prep --models` / `--from-drive` 时才会挂载 Drive，CLI 会打印一个 Google 授权链接，在浏览器里点同意即可。
 
 ## 费用控制
 
@@ -91,6 +100,7 @@ A100 80G 约 **7.52 CU/h**，Colab Pro 每月只有 100 CU，大约 13 小时。
 ```text
 colab-llm prep --gpu T4           在 T4 上编译 llama-server（CPU 运行时没有 nvcc）
 colab-llm prep --gpu T4 --rebuild 强制重新编译（更新 llama.cpp）
+colab-llm prep --from-drive       把旧版本存在 Drive 上的编译结果迁移到 HF_BIN_REPO（CPU 会话）
 colab-llm up [--keep]             --keep 失败时不关闭会话，方便排查
 colab-llm logs server -f          远端 llama-server 日志
 colab-llm logs watchdog|supervisor|serve|prep
@@ -101,4 +111,5 @@ colab-llm usage                   计算单元余额
 ## 安全
 
 - 远端的 llama-server 只监听 `127.0.0.1`，本地转发也只绑定在 `127.0.0.1`，同时有 API key 保护。
-- `config.env` 已加入 `.gitignore`。API key 和 ssh 配置都放在 `~/.config/colab-llm/`（权限 700）。
+- `config.env` 已加入 `.gitignore`。API key、HF token 和 ssh 配置都放在 `~/.config/colab-llm/`（权限 700）。
+- VM 上的 `api_key` / `hf_token` 文件权限是 600，VM 释放后随之销毁。

@@ -133,17 +133,14 @@ def prep():
 
     if not repo:
         raise RuntimeError("HF_REPO is not set")
-    if not os.path.ismount("/content/drive"):
+    sync = env("SYNC_MODELS", "1") == "1"
+    if sync and not os.path.ismount("/content/drive"):
         raise RuntimeError("Google Drive is not mounted (run `colab drivemount` first)")
 
-    if env("SYNC_MODELS", "1") == "1":
-        subprocess.run(
-            ["pip", "install", "-q", "-U", "huggingface_hub[hf_xet]"],
-            check=True, stdout=subprocess.DEVNULL,
-        )
+    if sync:
+        ensure_hf_hub()
         from huggingface_hub import HfApi
 
-    if env("SYNC_MODELS", "1") == "1":
         api = HfApi()
         stage_root = f"{APP}/stage"
         sync_repo(api, repo, quant, want_mmproj, drive_root, stage_root)
@@ -152,6 +149,9 @@ def prep():
     else:
         log("SYNC_MODELS=0 (SOURCE=hf): not copying the model to Drive; serve downloads it from HF")
 
+    if env("MIGRATE_FROM_DRIVE", "0") == "1":
+        migrate_from_drive(drive_root, llama_ref, archs)
+        return
     if build_mode == "no":
         log("BUILD=no, skipping llama-server build")
         return
@@ -161,16 +161,39 @@ def prep():
             raise RuntimeError(msg)
         log(f"{msg}; llama-server will be built in the GPU session instead")
         return
+    store = bin_store()
     force = env("FORCE_BUILD", "0") == "1"
-    cached = find_cached_server(drive_root, llama_ref, archs)
+    cached = store.get(llama_ref, archs)
     if cached and not force:
-        log(f"llama-server already cached: {cached} (use `colab-llm prep --rebuild` to refresh)")
+        log(f"llama-server already in {store.label}: {os.path.basename(cached)} "
+            "(use `colab-llm prep --gpu T4 --rebuild` to refresh)")
         return
     try:
-        build_and_cache(drive_root, llama_ref, archs)
+        build_and_store(store, llama_ref, archs)
     except Exception as e:  # noqa: BLE001
         if build_mode == "yes":
             raise
-        log(f"build on CPU runtime failed ({e}); the GPU session will build instead")
+        log(f"build failed ({e}); the GPU session will build instead")
+
+
+def migrate_from_drive(drive_root, ref, archs):
+    """Copy the newest llama-server build from Drive into the configured store."""
+    if not os.path.ismount("/content/drive"):
+        raise RuntimeError("Google Drive is not mounted")
+    src = DriveBinStore(drive_root).get(ref, archs)
+    if not src:
+        raise RuntimeError(f"no llama-server build for sm{arch_tag(archs)} under {drive_root}/bin")
+    name = os.path.basename(src)  # llama-server-<sha10>-sm<archs>
+    sha10 = name[len("llama-server-"):].split("-sm")[0]
+    store = bin_store()
+    if isinstance(store, DriveBinStore):
+        raise RuntimeError("BIN_STORE=drive: nothing to migrate")
+    local = f"{APP}/build-out/{name}"
+    os.makedirs(os.path.dirname(local), exist_ok=True)
+    shutil.copyfile(src, local)
+    # server_name() keeps the first 10 chars of the sha, so a 10-char sha works
+    _, secs = with_heartbeat(f"uploading {name} to {store.label}", lambda: store.put(local, sha10, archs))
+    log(f"migrated {name} from Drive to {store.label} ({secs:.0f}s)")
+
 
 finish(main)
