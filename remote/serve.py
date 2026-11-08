@@ -121,8 +121,13 @@ def get_server(ref, archs, gpu_arch):
             "(cheaper next time: colab-llm prep --gpu T4)")
         cached = build_and_store(store, ref, archs)
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    shutil.copyfile(cached, target)
-    os.chmod(target, 0o755)
+    # The old llama-server may still be running from `target` (restart):
+    # writing into a running executable fails with ETXTBSY, renaming over it
+    # does not (the running process keeps the old inode).
+    tmp = target + ".new"
+    shutil.copyfile(cached, tmp)
+    os.chmod(tmp, 0o755)
+    os.replace(tmp, target)
     version = subprocess.run([target, "--version"], capture_output=True, text=True)
     log("llama-server " + (version.stdout + version.stderr).strip().splitlines()[0])
     return target
