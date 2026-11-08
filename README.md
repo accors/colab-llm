@@ -92,7 +92,7 @@ A100 80G 约 **8.88 CU/h**，Colab Pro 每月只有 100 CU，大约 11 小时。
 
 默认使用 [froggeric/Qwen-Fixed-Chat-Templates](https://huggingface.co/froggeric/Qwen-Fixed-Chat-Templates)（固定在 v22.5 那次提交），而不是 GGUF 里自带的官方模板。它修复了工具调用回合里空 `<think>` 块导致的中断，默认推理强度为 medium，并且对 llama.cpp 的 minja 渲染器做了兼容。配置项：`CHAT_TEMPLATE_REPO` / `CHAT_TEMPLATE_FILE` / `CHAT_TEMPLATE_REV`（把 `CHAT_TEMPLATE_REPO` 留空就改回 GGUF 自带模板），`REASONING_FORMAT=deepseek`。
 
-`colab-llm bench` 用 8 个 agent 风格的请求（选工具、提取参数、根据工具结果回答、从工具报错中恢复、不需要工具时不调用）做对比测试：
+`colab-llm bench` 包含两类用例：8 个单轮请求（选工具、提取参数、根据工具结果回答、从工具报错中恢复、不需要工具时不调用），以及 4 个多轮 agent 循环——由 bench 扮演工具，返回固定的模拟结果，并把每轮的 reasoning_content 保留在历史里，最多 8 轮。多轮用例覆盖比较两城天气后计算温差、搜索后读文件、工具先报错再重试、连续三步计算。会话卡住（空回答）、同一调用重复 3 次、标签泄漏到正文，都算失败：
 
 ```bash
 colab-llm bench --label froggeric -n 2      # 当前配置
@@ -101,7 +101,7 @@ colab-llm restart && colab-llm bench --label embedded -n 2
 colab-llm bench --compare embedded froggeric
 ```
 
-每轮 16 个请求，按约 63 tok/s 算大约 3–6 分钟（约 0.5–0.9 CU）。
+实测单轮部分 `-n 2` 约 26 秒；加上多轮用例，整轮估计 1–2 分钟（约 0.15–0.3 CU）。只跑单轮部分可以加 `--single-only`。
 
 ## 首次使用时需要确认的事项
 
