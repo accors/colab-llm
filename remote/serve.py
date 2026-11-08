@@ -52,26 +52,46 @@ def fetch_from_drive(drive_root, repo, local_root, names):
 
 
 def fetch_from_hf(repo, local_root, names):
+    """Download all selected files in parallel.
+
+    Measured on Colab: the 28.8 GB n-gram shard sits ~60 s at 0 bytes before
+    Xet starts streaming it. Downloading the shards concurrently hides that
+    stall behind the 54.8 GB weights shard.
+    """
     ensure_hf_hub()
+    from concurrent.futures import ThreadPoolExecutor
+
     from huggingface_hub import HfApi, hf_hub_download
 
     info = HfApi().model_info(repo, files_metadata=True)
     files = {s.rfilename: s.size for s in info.siblings}
     dest = os.path.join(local_root, repo_dir_name(repo))
-    out = {}
-    for name in names(files):
+    wanted = names(files)
+    todo = []
+    for name in wanted:
         dst = os.path.join(dest, name)
         if os.path.exists(dst) and os.path.getsize(dst) == files[name]:
             log(f"already on local disk: {name}")
         else:
-            _, secs = with_heartbeat(
-                f"download {name}",
-                lambda: hf_hub_download(repo, name, revision=info.sha, local_dir=dest),
-                watch_path=dest,
-            )
-            log(f"downloaded {name}: {gb(files[name])} in {secs:.0f}s ({files[name] / max(secs, 1) / 1e6:.0f} MB/s)")
-        out[name] = dst
-    return out
+            todo.append(name)
+
+    def one(name):
+        t0 = time.time()
+        hf_hub_download(repo, name, revision=info.sha, local_dir=dest)
+        secs = time.time() - t0
+        log(f"downloaded {name}: {gb(files[name])} in {secs:.0f}s ({files[name] / max(secs, 1) / 1e6:.0f} MB/s)")
+
+    if todo:
+        total = sum(files[n] for n in todo)
+
+        def all_files():
+            with ThreadPoolExecutor(max_workers=len(todo)) as pool:
+                for f in [pool.submit(one, n) for n in todo]:
+                    f.result()
+
+        _, secs = with_heartbeat(f"download {len(todo)} files in parallel ({gb(total)})", all_files, watch_path=dest)
+        log(f"all downloads done: {gb(total)} in {secs:.0f}s ({total / max(secs, 1) / 1e6:.0f} MB/s)")
+    return {name: os.path.join(dest, name) for name in wanted}
 
 
 def model_files(quant, want_mmproj):
