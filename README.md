@@ -16,8 +16,8 @@ fork 自 [crhywun/colab-llm](https://github.com/crhywun/colab-llm)。原版用 n
 | --- | --- | --- |
 | `bin/colab-llm` | 本机 | 唯一入口：`init / prep / up / status / logs / restart / down / chat / ssh / usage` |
 | `config.env.example` | 本机 | 配置模板，`init` 时复制成 `config.env` |
-| `remote/prep.py` | Colab CPU 会话 | 从 HF 下载模型存到 Drive；有 nvcc 时顺便编译 llama-server 并缓存到 Drive |
-| `remote/serve.py` | Colab GPU 会话 | 检查显存，把模型拷到本地盘，启动 llama-server |
+| `remote/prep.py` | Colab T4 会话 | 编译 llama-server 缓存到 Drive；`SOURCE=drive` 或 `--models` 时也把模型存到 Drive |
+| `remote/serve.py` | Colab GPU 会话 | 检查显存，从 HF 下载模型（或从 Drive 拷贝），启动 llama-server |
 | `remote/watchdog.py` | Colab GPU 会话（kernel 内） | 维持会话存活；空闲、超时或服务挂掉时退出 |
 | `remote/common.py` | — | 公共函数，发送前拼接到上面三个脚本前面 |
 | `chat.py` | 本机 | 命令行对话和测速，只用标准库 |
@@ -39,7 +39,7 @@ colab-llm init                        # 生成 config.env、API key、ssh 配置
 ## 使用
 
 ```bash
-colab-llm prep        # 只需一次：开 CPU 会话下载约 84 GB 到 Drive，用完自动关闭（约 0.14 CU/h）
+colab-llm prep --gpu T4   # 只需一次：在 T4 上编译 llama-server 并缓存到 Drive（约 15 分钟，约 0.3 CU）
 colab-llm up          # 开 A100 80G，加载模型，启动后台 supervisor
 colab-llm chat "用三句话介绍你自己"
 colab-llm status      # 会话、空闲计时、token 数、CU 余额
@@ -71,7 +71,7 @@ A100 80G 约 **7.52 CU/h**，Colab Pro 每月只有 100 CU，大约 13 小时。
 
 ## 换模型或量化
 
-修改 `config.env` 里的 `HF_REPO` / `QUANT`，然后运行 `colab-llm prep`，再运行 `colab-llm restart`（或者 `down` 之后再 `up`）。
+修改 `config.env` 里的 `HF_REPO` / `QUANT`，再运行 `colab-llm restart`（或者 `down` 之后再 `up`）。默认 `SOURCE=hf`，所以不用重新跑 prep。
 
 - 去审查版：`HF_REPO=SC117/Qwen3.8-Flash-Next-GSQ-RCO-abliterated-GGUF`。它是把替换后的张量写进同一份量化文件，原版 llama.cpp 能直接加载，但**质量和工具调用都没有公开测试**，用之前自己回归测一下。
 - alesha-pro 的 control vector 方案在 llama.cpp 里**不会生效**：上游 `qwen4exp` 的实现没有调用 `build_cvec`，只有 Strata 能用。

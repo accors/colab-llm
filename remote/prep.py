@@ -136,17 +136,21 @@ def prep():
     if not os.path.ismount("/content/drive"):
         raise RuntimeError("Google Drive is not mounted (run `colab drivemount` first)")
 
-    subprocess.run(
-        ["pip", "install", "-q", "-U", "huggingface_hub[hf_xet]"],
-        check=True, stdout=subprocess.DEVNULL,
-    )
-    from huggingface_hub import HfApi
+    if env("SYNC_MODELS", "1") == "1":
+        subprocess.run(
+            ["pip", "install", "-q", "-U", "huggingface_hub[hf_xet]"],
+            check=True, stdout=subprocess.DEVNULL,
+        )
+        from huggingface_hub import HfApi
 
-    api = HfApi()
-    stage_root = f"{APP}/stage"
-    sync_repo(api, repo, quant, want_mmproj, drive_root, stage_root)
-    if mtp_repo and mtp_file:
-        sync_repo(api, mtp_repo, "__none__", False, drive_root, stage_root, extra_files=[mtp_file])
+    if env("SYNC_MODELS", "1") == "1":
+        api = HfApi()
+        stage_root = f"{APP}/stage"
+        sync_repo(api, repo, quant, want_mmproj, drive_root, stage_root)
+        if mtp_repo and mtp_file:
+            sync_repo(api, mtp_repo, "__none__", False, drive_root, stage_root, extra_files=[mtp_file])
+    else:
+        log("SYNC_MODELS=0 (SOURCE=hf): not copying the model to Drive; serve downloads it from HF")
 
     if build_mode == "no":
         log("BUILD=no, skipping llama-server build")

@@ -4,8 +4,9 @@
 # through `ssh -L` (no public tunnel).
 #
 #   colab-llm init               one-time: config, API key, ssh config, checks
-#   colab-llm prep [--gpu T4] [--rebuild]
-#                                model -> Drive; with --gpu also build llama-server
+#   colab-llm prep --gpu T4 [--rebuild] [--models]
+#                                build llama-server on a T4 and cache it on Drive;
+#                                also copies the model to Drive if SOURCE=drive or --models
 #   colab-llm up [--keep]        GPU session: load model, start server + tunnel
 #   colab-llm status             session, watchdog, local endpoint, CU balance
 #   colab-llm logs [server|watchdog|supervisor] [-f]
@@ -51,7 +52,7 @@ load_config() {
 # Variables forwarded to the remote scripts with `colab exec --env`.
 # The API key is NOT among them: `colab exec` records the code it sends (env
 # prelude included) in ~/.config/colab-cli/history, so the key goes over ssh.
-REMOTE_VARS=(HF_REPO QUANT SOURCE DRIVE_MODELS MMPROJ MTP_REPO MTP_FILE BUILD FORCE_BUILD
+REMOTE_VARS=(HF_REPO QUANT SOURCE DRIVE_MODELS MMPROJ MTP_REPO MTP_FILE BUILD FORCE_BUILD SYNC_MODELS
   LLAMA_CPP_REF CUDA_ARCHS MIN_VRAM_GIB REMOTE_PORT CTX PARALLEL ALIAS EXTRA_ARGS
   LOAD_TIMEOUT IDLE_MINUTES MAX_HOURS POLL XET_HIGH_PERF)
 
@@ -153,14 +154,19 @@ cmd_init() {
 
 cmd_prep() {
   load_config
-  local rebuild=0 gpu=""
+  local rebuild=0 gpu="" sync=0
+  [[ "$SOURCE" == drive ]] && sync=1
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --rebuild) rebuild=1; shift ;;
       --gpu) gpu="${2:?--gpu needs a value, e.g. T4}"; shift 2 ;;
-      *) die "prep: unknown option $1 (--rebuild, --gpu T4)" ;;
+      --models) sync=1; shift ;; # also back the model up to Drive with SOURCE=hf
+      *) die "prep: unknown option $1 (--gpu T4, --rebuild, --models)" ;;
     esac
   done
+  if [[ "$sync" == 0 && -z "$gpu" ]]; then
+    die "SOURCE=hf: nothing to do on a CPU session (no nvcc). Use: colab-llm prep --gpu T4"
+  fi
   local logfile="$STATE_DIR/prep.log"
   : >"$logfile"
   if session_alive "$PREP_SESSION"; then
@@ -179,7 +185,7 @@ cmd_prep() {
   "$COLAB" drivemount -s "$PREP_SESSION"
   local build="${BUILD:-auto}"
   [[ -n "$gpu" ]] && build=yes
-  BUILD="$build" FORCE_BUILD="$rebuild" \
+  BUILD="$build" FORCE_BUILD="$rebuild" SYNC_MODELS="$sync" \
     cexec "$PREP_SESSION" prep.py 900 "$logfile" || die "prep failed (log: $logfile)"
   note "prep done"
 }
