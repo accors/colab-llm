@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""在 Mac 上调用 Colab 里的 llama-server（OpenAI 兼容接口）。只用标准库。
+"""调用 colab-llm 启动的 llama-server（OpenAI 兼容接口）。只用标准库。
 
 用法：
   python3 chat.py              # 交互式多轮对话（输入 /clear 清空历史，/exit 退出）
   python3 chat.py "你好"        # 单次提问
+  colab-llm chat "你好"         # 同上
 
-连接信息从同目录的 .env 读取（Colab 第 5 个 cell 会打印出来）：
-  COLAB_LLM_URL=https://xxx.trycloudflare.com/v1
+连接信息按顺序读取：环境变量 > 同目录 .env > ~/.config/colab-llm/client.env
+（client.env 由 `colab-llm init` 生成）：
+  COLAB_LLM_URL=http://127.0.0.1:8080/v1
   COLAB_LLM_KEY=...
-  COLAB_LLM_MODEL=qwen3.8-27b
+  COLAB_LLM_MODEL=qwen3.8-flash-next
 """
 import json
 import os
@@ -19,19 +21,26 @@ import urllib.request
 from pathlib import Path
 
 
+def env_files():
+    if os.environ.get("COLAB_LLM_ENV"):
+        return [Path(os.environ["COLAB_LLM_ENV"])]
+    conf = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+    return [Path(__file__).with_name(".env"), conf / "colab-llm" / "client.env"]
+
+
 def load_env():
-    env_file = Path(__file__).with_name(".env")
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip().removeprefix("export ").strip(), v.strip())
+    for env_file in env_files():
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip().removeprefix("export ").strip(), v.strip())
     missing = [k for k in ("COLAB_LLM_URL", "COLAB_LLM_KEY") if not os.environ.get(k)]
     if missing:
-        sys.exit(f"缺少 {', '.join(missing)}：把 Colab 第 5 个 cell 的输出粘贴进 {env_file}")
+        sys.exit(f"缺少 {', '.join(missing)}：先运行 colab-llm init")
     return (os.environ["COLAB_LLM_URL"].rstrip("/"), os.environ["COLAB_LLM_KEY"],
-            os.environ.get("COLAB_LLM_MODEL", "qwen3.8-27b"))
+            os.environ.get("COLAB_LLM_MODEL", "qwen3.8-flash-next"))
 
 
 def stream_chat(url, key, model, messages, max_tokens=4096):
@@ -41,7 +50,7 @@ def stream_chat(url, key, model, messages, max_tokens=4096):
                          "max_tokens": max_tokens,
                          "stream_options": {"include_usage": True}}).encode(),
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}",
-                 "User-Agent": "colab-llm-chat/1.0"},  # Cloudflare 会拦截默认的 Python-urllib UA（error 1010）
+                 "User-Agent": "colab-llm-chat/1.0"},
     )
     t0, first, n, answer, in_think = time.time(), None, 0, [], False
     with urllib.request.urlopen(req, timeout=600) as resp:
@@ -100,9 +109,11 @@ def main():
             history.append({"role": "assistant", "content": stream_chat(url, key, model, history)})
     except urllib.error.HTTPError as e:
         sys.exit(f"HTTP {e.code}: {e.read().decode()[:300]}"
-                 + ("\n（401 = key 不对；Colab 重新运行第 3 步后 key 会变，要更新 .env）" if e.code == 401 else ""))
+                 + ("\n（401 = key 不对：client.env 和 Colab 上的 key 不一致，运行 colab-llm restart）" if e.code == 401 else ""))
     except urllib.error.URLError as e:
-        sys.exit(f"连不上 {url}: {e.reason}\n（Colab 运行时断了，或隧道地址变了，重新运行第 5 步并更新 .env）")
+        sys.exit(f"连不上 {url}: {e.reason}\n（服务没起来或 ssh 隧道断了：colab-llm status）")
+    except OSError as e:
+        sys.exit(f"连接 {url} 出错: {e}\n（服务没起来或 ssh 隧道断了：colab-llm status）")
 
 
 if __name__ == "__main__":
