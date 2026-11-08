@@ -18,6 +18,11 @@ APP = "/content/colab-llm"
 # VMs). Must be set before huggingface_hub is imported. XET_HIGH_PERF=0 to opt out.
 if os.environ.get("XET_HIGH_PERF", "1") == "1":
     os.environ.setdefault("HF_XET_HIGH_PERFORMANCE", "1")
+# Public repos need no token. Without this, huggingface_hub tries the Colab
+# Secrets vault, which only works from the Colab web UI: it waits for a
+# timeout and prints a warning when driven from the CLI.
+if not os.environ.get("HF_TOKEN"):
+    os.environ.setdefault("HF_HUB_DISABLE_IMPLICIT_TOKEN", "1")
 TAG = os.environ.get("COLAB_LLM_TAG", "colab-llm")
 
 
