@@ -54,6 +54,14 @@ def with_heartbeat(label, fn, watch_path=None, every=30):
         except BaseException as e:  # noqa: BLE001 - re-raised below
             error["e"] = e
 
+    def size_of(path):
+        if not path or not os.path.exists(path):
+            return 0
+        return dir_size(path) if os.path.isdir(path) else os.path.getsize(path)
+
+    # Count only bytes added since this call started: a staging directory may
+    # still hold the previous file while it is being copied to Drive.
+    base = size_of(watch_path)
     t = threading.Thread(target=target, daemon=True)
     t0 = time.time()
     t.start()
@@ -61,10 +69,10 @@ def with_heartbeat(label, fn, watch_path=None, every=30):
         t.join(every)
         if t.is_alive():
             extra = ""
-            if watch_path and os.path.exists(watch_path):
-                size = dir_size(watch_path) if os.path.isdir(watch_path) else os.path.getsize(watch_path)
-                rate = size / max(time.time() - t0, 1)
-                extra = f" | {gb(size)} @ {rate / 1e6:.0f} MB/s"
+            if watch_path:
+                done = max(size_of(watch_path) - base, 0)
+                rate = done / max(time.time() - t0, 1)
+                extra = f" | {gb(done)} @ {rate / 1e6:.0f} MB/s"
             log(f"{label}: {time.time() - t0:.0f}s elapsed{extra}")
     if "e" in error:
         raise error["e"]
