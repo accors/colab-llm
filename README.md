@@ -88,6 +88,21 @@ A100 80G 约 **8.88 CU/h**，Colab Pro 每月只有 100 CU，大约 11 小时。
 - alesha-pro 的 control vector 方案在 llama.cpp 里**不会生效**：上游 `qwen4exp` 的实现没有调用 `build_cvec`，只有 Strata 能用。
 - 想用 MTP 投机解码，可以设置 `MTP_REPO` / `MTP_FILE`（见配置注释）。速度收益没有实测过。
 
+## 聊天模板与工具调用测试
+
+默认使用 [froggeric/Qwen-Fixed-Chat-Templates](https://huggingface.co/froggeric/Qwen-Fixed-Chat-Templates)（固定在 v22.5 那次提交），而不是 GGUF 里自带的官方模板。它修复了工具调用回合里空 `<think>` 块导致的中断，默认推理强度为 medium，并且对 llama.cpp 的 minja 渲染器做了兼容。配置项：`CHAT_TEMPLATE_REPO` / `CHAT_TEMPLATE_FILE` / `CHAT_TEMPLATE_REV`（把 `CHAT_TEMPLATE_REPO` 留空就改回 GGUF 自带模板），`REASONING_FORMAT=deepseek`。
+
+`colab-llm bench` 用 8 个 agent 风格的请求（选工具、提取参数、根据工具结果回答、从工具报错中恢复、不需要工具时不调用）做对比测试：
+
+```bash
+colab-llm bench --label froggeric -n 2      # 当前配置
+# 在 config.env 里把 CHAT_TEMPLATE_REPO 留空，然后：
+colab-llm restart && colab-llm bench --label embedded -n 2
+colab-llm bench --compare embedded froggeric
+```
+
+每轮 16 个请求，按约 63 tok/s 算大约 3–6 分钟（约 0.5–0.9 CU）。
+
 ## 首次使用时需要确认的事项
 
 下面这些在写代码时只能根据文档和源码推断，第一次真实运行时请留意：

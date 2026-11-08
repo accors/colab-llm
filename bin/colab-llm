@@ -15,6 +15,8 @@
 #   colab-llm restart            reload llama-server (after editing config.env)
 #   colab-llm down               stop everything and release the GPU
 #   colab-llm chat [PROMPT]      quick test with chat.py
+#   colab-llm bench --label NAME [-n 2] | --compare A B
+#                                tool-calling benchmark (A/B chat templates etc.)
 #   colab-llm ssh [CMD...]       shell (or one command) on the GPU session
 #   colab-llm usage              compute-unit balance (colab usage)
 set -euo pipefail
@@ -46,6 +48,7 @@ load_config() {
   : "${REMOTE_PORT:=8000}" "${LOCAL_PORT:=8080}" "${CTX:=262144}" "${PARALLEL:=1}"
   : "${ALIAS:=qwen3.8-flash-next}" "${EXTRA_ARGS:=}" "${LOAD_TIMEOUT:=1800}"
   : "${BIN_STORE:=hf}" "${HF_BIN_REPO:=}"
+  : "${CHAT_TEMPLATE_REPO:=}" "${CHAT_TEMPLATE_FILE:=chat_template.jinja}" "${CHAT_TEMPLATE_REV:=}" "${REASONING_FORMAT:=}"
   : "${IDLE_MINUTES:=15}" "${MAX_HOURS:=8}" "${POLL:=30}" "${NOTIFY_CMD:=}" "${XET_HIGH_PERF:=1}"
   COLAB="$(command -v colab || true)"
   [[ -n "$COLAB" ]] || die "colab CLI not found (uv tool install google-colab-cli)"
@@ -57,7 +60,8 @@ load_config() {
 # The API key is NOT among them: `colab exec` records the code it sends (env
 # prelude included) in ~/.config/colab-cli/history, so the key goes over ssh.
 REMOTE_VARS=(HF_REPO QUANT SOURCE DRIVE_MODELS MMPROJ MTP_REPO MTP_FILE BUILD FORCE_BUILD SYNC_MODELS
-  BIN_STORE HF_BIN_REPO MIGRATE_FROM_DRIVE
+  BIN_STORE HF_BIN_REPO MIGRATE_FROM_DRIVE CHAT_TEMPLATE_REPO CHAT_TEMPLATE_FILE CHAT_TEMPLATE_REV
+  REASONING_FORMAT
   LLAMA_CPP_REF CUDA_ARCHS MIN_VRAM_GIB REMOTE_PORT CTX PARALLEL ALIAS EXTRA_ARGS
   LOAD_TIMEOUT IDLE_MINUTES MAX_HOURS POLL XET_HIGH_PERF)
 
@@ -514,6 +518,7 @@ main() {
   case "$cmd" in
     init | prep | up | ensure | down | restart | status | logs | ssh | _supervise) "cmd_$cmd" "$@" ;;
     chat) exec python3 "$REPO_DIR/chat.py" "$@" ;;
+    bench) exec python3 "$REPO_DIR/bench/tool_bench.py" "$@" ;;
     usage) load_config; "$COLAB" usage ;;
     help | -h | --help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | grep '^#' | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command '$cmd' (colab-llm help)" ;;

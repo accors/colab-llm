@@ -67,6 +67,9 @@ client = OpenAI(base_url="http://127.0.0.1:8080/v1",
 
 Quick smoke test: `colab-llm chat "say hi"` (streams and prints tok/s).
 
+Tool-calling regression check (costs GPU time, ~3–6 min): `colab-llm bench --label NAME -n 2`,
+then `colab-llm bench --compare OLD NEW`. Run it after changing the model, quant or chat template.
+
 Check state and cost: `colab-llm status` — session, supervisor, endpoint health,
 watchdog idle timer and session age, tokens served, CU balance.
 

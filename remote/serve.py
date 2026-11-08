@@ -108,6 +108,25 @@ def get_server(ref, archs, gpu_arch):
     return target
 
 
+def get_chat_template(repo, filename, revision):
+    """Download a Jinja chat template from HF; returns (path, commit sha)."""
+    ensure_hf_hub()
+    from huggingface_hub import HfApi, hf_hub_download
+
+    sha = HfApi().model_info(repo, revision=revision or None).sha
+    path = hf_hub_download(repo, filename, revision=sha, local_dir=f"{APP}/templates/{sha[:10]}")
+    with open(path, errors="replace") as f:
+        head = f.read(4000)
+    version = ""
+    for line in head.splitlines():
+        if "template_version" in line and "=" in line:
+            version = line.split("=", 1)[1].strip(" %}\"'")
+            break
+    log(f"chat template: {repo}/{filename} @ {sha[:10]}" + (f" ({version})" if version else "")
+        + ("" if revision else " - not pinned; set CHAT_TEMPLATE_REV to this sha to pin it"))
+    return path, sha
+
+
 def stop_existing_server():
     # The bracket keeps pkill from matching its own command line.
     subprocess.run(["pkill", "-f", "[c]olab-llm/bin/llama-server"])
@@ -208,8 +227,18 @@ def main():
         # The n-gram table (shard 2) stays memory-mapped on local disk and is
         # read row by row on demand instead of occupying ~29 GB of VRAM/RAM.
         "-lm", "mmap", "--lazy-mode", "on",
+        # --jinja must come before --chat-template-file
         "--jinja", "--metrics", "--host", "127.0.0.1", "--port", str(port),
     ]
+    template_info = None
+    if env("CHAT_TEMPLATE_REPO"):
+        tpl, tpl_sha = get_chat_template(
+            env("CHAT_TEMPLATE_REPO"), env("CHAT_TEMPLATE_FILE", "chat_template.jinja"), env("CHAT_TEMPLATE_REV")
+        )
+        cmd += ["--chat-template-file", tpl]
+        template_info = {"repo": env("CHAT_TEMPLATE_REPO"), "sha": tpl_sha}
+    if env("REASONING_FORMAT"):
+        cmd += ["--reasoning-format", env("REASONING_FORMAT")]
     if mmproj:
         cmd += ["--mmproj", mmproj]
     if mtp_path:
@@ -227,7 +256,8 @@ def main():
     ).strip()
     log(f"llama-server healthy after {secs:.0f}s, pid {proc.pid}, VRAM {used}")
     with open(f"{APP}/server.json", "w") as f:
-        json.dump({"pid": proc.pid, "started": time.time(), "port": port, "alias": alias, "cmd": cmd}, f)
+        json.dump({"pid": proc.pid, "started": time.time(), "port": port, "alias": alias,
+                   "chat_template": template_info, "cmd": cmd}, f)
 
 
 finish(main)
